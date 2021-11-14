@@ -26,7 +26,9 @@ contract DARKSO is ERC20, Ownable {
 
     address private OpenWallet = 0xF8a29F60Fd8923d6dD04B22bDa3e7730Aac35C98;
 
-    address private liquidityWallet = 0xdc2e61ae8A109C10691967c9B4850F000214F2Ea;
+    address private liquidityWallet = 0x704e18De9fdA90aBB0e80aaD8CCf6E8B1b73e6fa;
+    //0xdc2e61ae8A109C10691967c9B4850F000214F2Ea;
+
 
     event BuyTokens(address indexed from, uint256 tokenAmount);
 
