@@ -14,96 +14,54 @@ contract DARKSO is ERC20, Ownable {
     string private _name = "DarkSwordOnline";
     string private _symbol = "DARKSO";
 
-    uint256 public _totalPresale;
-    uint256 private PresaleIssue;
+    uint256 private _PresaleLimit = 45e12;
+    uint256 private _totalPresale;
     uint8 private _tokenDecimals = 6;
+    uint256 private _PresaleLimitPerUser = 1e12;
 
     bool private canPresale = true;
 
-    uint256 private _rate;
-
-    address private lockedWallet;
+    uint256 private _bnbRate; //Ex 1000 Darkso = 1 BNB : set 1000
+    uint256 private _coinRate; //Ex 100 coin = 1 Darkso : set 100
 
     address private OpenWallet = 0xF8a29F60Fd8923d6dD04B22bDa3e7730Aac35C98;
 
     address private liquidityWallet = 0xdc2e61ae8A109C10691967c9B4850F000214F2Ea;
 
-    uint256 private TokenWithdrawTime;
-
-    struct PresaleRecord{
-        uint256 issue;
-                
-        uint256 icoTotal;
-        
-        uint256 startTime;
-        
-        uint256 duration;
-        
-        uint256 maxLimitPerUser;
-
-        uint256 receivedTotal;
-        
-        mapping(address => uint256) TokenAmount;
-    }
-
-    mapping(uint256 => PresaleRecord) public ICODB;
-
-    event PresaleCreate(uint256 PresaleIssue, uint256 maxLimitPerUser, uint256 PresaleAmount, uint256 startTime, uint256 blocktimenow ,uint256 duration);
-
-    event BuyTokens(uint256 PresaleIssue, address indexed from, uint256 tokenAmount);
+    event BuyTokens(address indexed from, uint256 tokenAmount);
 
     event TokenWithdraw(address OpenWallet, address lockedWallet, uint256 tokenAmount);
 
+    event ExchangeToken(address recipient,uint256 extoken);
+
+    event ExchangeCoin(address recipient, uint256 exCoin, uint256 exToken);
+
     constructor() ERC20(_name,_symbol) {
-        _totalSupply = 300e12;
-        lockedWallet = _msgSender();
 
-        _mint(lockedWallet,260e12);
-        _mint(OpenWallet,35e12);
-        _mint(liquidityWallet,5e12);
-
-        TokenWithdrawTime = block.timestamp;
+        _totalSupply = 300e12;        
+        _mint(address(this),255e12);
+        _mint(OpenWallet,15e12);
+        _mint(liquidityWallet,30e12);
 
     }
     receive() external payable {}
 
-    function setRate(uint256 newRate) external onlyOwner{
-        _rate = newRate;
+    function setBNBRate(uint256 newRate) external onlyOwner{
+        _bnbRate = newRate;
+    }
+    function setCoinRate(uint256 newRate) external onlyOwner{
+        _coinRate = newRate;
     }
 
-    function startPresale(
-        uint256 PresaleAmount,
-        uint256 startTime,
-        uint256 duration,
-        uint256 maxLimitPerUser
-    )external onlyOwner{
+    function getCoinRate()public view returns(uint256){
+        return _coinRate;
+    }
+
+    function startPresale()external onlyOwner{
 
         require( canPresale, "Presale will be disable until new token withdraw");
-        require( block.timestamp >
-            ICODB[PresaleIssue].startTime.add( ICODB[PresaleIssue].duration),
-            "presale is not over yet");
-        PresaleIssue = PresaleIssue.add(1);
-        PresaleRecord storage ico = ICODB[PresaleIssue];
-        ico.issue = PresaleIssue;
-        ico.icoTotal = PresaleAmount;
-        ico.startTime = startTime;
-        ico.duration = duration;
-        ico.maxLimitPerUser = maxLimitPerUser;
-
         canPresale = false;
         _totalPresale = 0;
-
-        _transfer(OpenWallet, address(this), PresaleAmount);
-
-        emit PresaleCreate(
-            PresaleIssue,
-            //TokenPrice,
-            maxLimitPerUser,
-            PresaleAmount,
-            startTime,
-            block.timestamp,
-            duration
-        );
     }
 
 
@@ -111,45 +69,52 @@ contract DARKSO is ERC20, Ownable {
 
         require(msg.sender != address(0), "address is 0");
 
-        require(PresaleIssue > 0, "Presale that does not exist");
-
-        require( block.timestamp >= ICODB[PresaleIssue].startTime &&
-            block.timestamp < ICODB[PresaleIssue].startTime + ICODB[PresaleIssue].duration,
-                 "Presale is not in progrsess.");
-
-        require( _totalPresale < ICODB[PresaleIssue].icoTotal, "Not enough tokens left");
-
-
-        PresaleRecord storage record = ICODB[PresaleIssue];
+        require( _totalPresale < _PresaleLimit, "Not enough tokens left");
 
         uint256 tokenAmount = _getTokenAmount(msg.value);
-        require( record.TokenAmount[msg.sender].add(tokenAmount) <= record.maxLimitPerUser,
+        require( balanceOf(msg.sender).add(tokenAmount) <= _PresaleLimitPerUser,
                  "amount cannot bigger than maxLimitAmount");
-        
-        record.TokenAmount[msg.sender] += tokenAmount;
+         
         _totalPresale += tokenAmount;
         _transfer(address(this), msg.sender, tokenAmount);
 
-        emit BuyTokens(PresaleIssue, msg.sender, tokenAmount);
+        emit BuyTokens(msg.sender, tokenAmount);
+    }
+
+    //sending token from contract wallet to the recipient wallet
+    function exchange_tokenTocoin(uint256 extoken,address sender) public onlyOwner returns (bool){
+        transferFrom(sender, address(this), extoken);
+
+//        _transfer(sender, address(this), extoken);
+        emit ExchangeToken(sender, extoken);
+        return true;
+    }
+
+    //sending token from recipient wallet to the contract wallet
+    function exchange_coinTotoken(uint256 exCoin, address recipient) public onlyOwner returns (bool){
+        
+        uint256 exToken;
+        exToken = _getTokenAmount_Coin(exCoin);
+        _transfer(address(this), recipient, exCoin);
+        emit ExchangeCoin(recipient, exCoin, exToken);
+        return true;
     } 
 
     function _getTokenAmount(uint256 weiAmount) internal view returns (uint256) {
-        return weiAmount.mul(_rate).div(10**(18-_tokenDecimals));
+        return weiAmount.mul(_bnbRate).div(10**(18-_tokenDecimals));
     }
+
+    function _getTokenAmount_Coin(uint256 weiAmount) internal view returns (uint256){
+        return weiAmount.div(_coinRate);
+    }
+
 
     function decimals() public view override returns (uint8) {
         return _tokenDecimals;
     }
 
-    function withdrawToken() external onlyOwner{
-
-        require(block.timestamp - TokenWithdrawTime >= 30 days, "Now is not time for withdraw token");
-        
-        _transfer(lockedWallet, OpenWallet, 26e12);
-
-        TokenWithdrawTime = block.timestamp;
-        canPresale = true;
-        emit TokenWithdraw(lockedWallet, OpenWallet, 26e12);
+    function getOwner() public view returns (address) {
+        return OpenWallet;
     }
 
     function withdrawBNB(address payable recipient) public onlyOwner {
@@ -167,11 +132,5 @@ contract DARKSO is ERC20, Ownable {
 
     function totalSupply() public view override returns (uint256) {
         return _totalSupply;
-    }
-
-    function transfer(address recipient, uint256 amount) public override returns (bool) {
-        require(_msgSender() != lockedWallet, "lockedWallet cannot transfer tokens to another");
-        _transfer(_msgSender(), recipient, amount);
-        return true;
     }
 }
